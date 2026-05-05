@@ -1,0 +1,39 @@
+name: Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Windows executable
+    runs-on: ubuntu-latest
+
+    env:
+      EXE_NAME: turnbinds.exe
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build Windows executable
+        env:
+          DOCKER_BUILDKIT: 1
+        run: |
+          mkdir -p release
+          docker buildx build --output type=local,dest=release .
+
+          if [[ ! -f "release/$EXE_NAME" ]]; then
+            echo "Expected release/$EXE_NAME to exist after build" >&2
+            find release -maxdepth 2 -type f -print >&2
+            exit 1
+          fi
+
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: turnbinds
+          path: release/turnbinds.exe
+          if-no-files-found: error

@@ -1,0 +1,62 @@
+name: Build Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version
+        required: true
+        default: 1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+
+    env:
+      EXE_NAME: turnbinds.exe
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate version
+        id: version
+        shell: bash
+        run: |
+          version="${{ github.event.inputs.version }}"
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must use SemVer format like 1.0.0" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build Windows executable
+        env:
+          DOCKER_BUILDKIT: 1
+        run: |
+          mkdir -p release
+          docker buildx build --output type=local,dest=release .
+
+          if [[ ! -f "release/$EXE_NAME" ]]; then
+            echo "Expected release/$EXE_NAME to exist after build" >&2
+            find release -maxdepth 2 -type f -print >&2
+            exit 1
+          fi
+
+      - name: Publish GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$TAG" "release/$EXE_NAME" \
+            --target "$GITHUB_SHA" \
+            --title "turnbinds $VERSION" \
+            --notes "Release $VERSION"
